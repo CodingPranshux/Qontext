@@ -1,0 +1,1 @@
+Enterprise plan customers can configure single sign-on (SSO) via SAML 2.0, integrating with identity providers such as Okta, Azure AD, and Google Workspace. Once SSO is enabled and enforced, team members must authenticate through your identity provider and password-based login is disabled for your organization. Contact your account manager to begin SSO setup.

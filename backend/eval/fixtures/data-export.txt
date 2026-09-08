@@ -1,0 +1,1 @@
+You can export all of your account's data at any time from Settings > Data Export. Exports are provided as a downloadable ZIP file containing CSV files for each data type. Export requests are processed asynchronously and you will receive an email with a download link once the export is ready, typically within 30 minutes.

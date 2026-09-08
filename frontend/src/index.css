@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0a0e17;
+  --color-surface: #131826;
+  --color-surface-2: #1a2032;
+  --color-border: #262e42;
+  --color-text: #e5e7eb;
+  --color-text-secondary: #94a3b8;
+  --color-text-tertiary: #64748b;
+  --color-accent: #818cf8;
+  --color-accent-hover: #a5b4fc;
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --shadow-glow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 25%, transparent), 0 0 20px
+    color-mix(in srgb, var(--color-accent) 25%, transparent);
+  --shadow-glow-lg: 0 0 48px color-mix(in srgb, var(--color-accent) 35%, transparent);
+
+  --animate-pulse-glow: pulse-glow 2.4s ease-in-out infinite;
+  --animate-check-pop: check-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-fade-in-up: fade-in-up 0.35s ease-out both;
+  --animate-icon-breathe: icon-breathe 2.8s ease-in-out infinite;
+
+  @keyframes pulse-glow {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  @keyframes check-pop {
+    0% {
+      transform: scale(0.5);
+      opacity: 0;
+    }
+    60% {
+      transform: scale(1.15);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes icon-breathe {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.92;
+    }
+    50% {
+      transform: scale(1.06);
+      opacity: 1;
+    }
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-accent) 35%, transparent);
+    color: white;
+  }
+}

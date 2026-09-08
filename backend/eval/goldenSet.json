@@ -1,0 +1,132 @@
+[
+  {
+    "id": "q1",
+    "question": "How many days do I have to return an item?",
+    "expectedChunks": [{ "sourceFilename": "refund-policy.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q2",
+    "question": "Will I get my original shipping cost back if I return an item?",
+    "expectedChunks": [{ "sourceFilename": "refund-policy.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q3",
+    "question": "How long does standard shipping take?",
+    "expectedChunks": [{ "sourceFilename": "shipping.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q4",
+    "question": "Which carriers do you use to ship orders?",
+    "expectedChunks": [{ "sourceFilename": "shipping.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q5",
+    "question": "What should I do if I think my account has been hacked?",
+    "expectedChunks": [{ "sourceFilename": "account-security.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q6",
+    "question": "Would support ever email me asking for my password?",
+    "expectedChunks": [{ "sourceFilename": "account-security.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q7",
+    "question": "On what day of the month am I billed for my subscription?",
+    "expectedChunks": [{ "sourceFilename": "billing-cycle.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q8",
+    "question": "What happens to my bill if I upgrade my plan in the middle of the month?",
+    "expectedChunks": [{ "sourceFilename": "billing-cycle.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q9",
+    "question": "How much storage does the Pro plan include?",
+    "expectedChunks": [{ "sourceFilename": "subscription-plans.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q10",
+    "question": "Which plan lets me set up single sign-on?",
+    "expectedChunks": [
+      { "sourceFilename": "subscription-plans.txt", "chunkIndex": 0 },
+      { "sourceFilename": "enterprise-sso.txt", "chunkIndex": 0 }
+    ]
+  },
+  {
+    "id": "q11",
+    "question": "What happens if I exceed the API rate limit?",
+    "expectedChunks": [{ "sourceFilename": "api-rate-limits.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q12",
+    "question": "How many API requests per minute can Enterprise customers make?",
+    "expectedChunks": [{ "sourceFilename": "api-rate-limits.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q13",
+    "question": "How do I export all of my account's data?",
+    "expectedChunks": [{ "sourceFilename": "data-export.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q14",
+    "question": "What file format is a data export delivered in?",
+    "expectedChunks": [{ "sourceFilename": "data-export.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q15",
+    "question": "What are your customer support hours?",
+    "expectedChunks": [{ "sourceFilename": "support-hours.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q16",
+    "question": "Do Enterprise customers get a faster support response time?",
+    "expectedChunks": [{ "sourceFilename": "support-hours.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q17",
+    "question": "What are the password complexity requirements?",
+    "expectedChunks": [{ "sourceFilename": "password-requirements.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q18",
+    "question": "How do I cancel my subscription?",
+    "expectedChunks": [{ "sourceFilename": "cancellation-policy.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q19",
+    "question": "If I cancel partway through a billing period, do I get a prorated refund for the rest of it?",
+    "expectedChunks": [{ "sourceFilename": "cancellation-policy.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q20",
+    "question": "How do I set up two-factor authentication on my account?",
+    "expectedChunks": [{ "sourceFilename": "two-factor-setup.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q21",
+    "question": "What should I do if I lose access to my authenticator app?",
+    "expectedChunks": [{ "sourceFilename": "two-factor-setup.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q22",
+    "question": "Which identity providers do you support for single sign-on?",
+    "expectedChunks": [{ "sourceFilename": "enterprise-sso.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q23",
+    "question": "Can employees still log in with a password once SSO is enforced?",
+    "expectedChunks": [{ "sourceFilename": "enterprise-sso.txt", "chunkIndex": 0 }]
+  },
+  {
+    "id": "q24",
+    "question": "Do you offer a native mobile app for iOS?",
+    "expectedChunks": [],
+    "note": "Deliberately unanswerable from the corpus — checks that retrieval recall=1 (nothing relevant existed to miss) and that generation abstains rather than guessing."
+  },
+  {
+    "id": "q25",
+    "question": "What was the company's total revenue last year?",
+    "expectedChunks": [],
+    "note": "Deliberately unanswerable from the corpus — same purpose as q24."
+  }
+]

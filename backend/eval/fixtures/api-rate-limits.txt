@@ -1,0 +1,1 @@
+The public API is rate limited to 100 requests per minute per API key on the Pro plan and 1000 requests per minute on the Enterprise plan. Requests that exceed the limit receive a 429 status code along with a Retry-After header indicating how many seconds to wait. Rate limits reset on a rolling one-minute window, not at fixed clock boundaries.

@@ -1,0 +1,16 @@
+{
+  "name": "multi-tenant-rag-platform",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Multi-tenant RAG platform monorepo (backend + frontend)",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "build:frontend": "npm run build --workspace frontend",
+    "test:backend": "npm run test --workspace backend"
+  }
+}

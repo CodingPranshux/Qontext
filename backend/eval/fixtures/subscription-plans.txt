@@ -1,0 +1,1 @@
+We offer three subscription tiers: Starter, Pro, and Enterprise. Starter includes up to 3 team members and 10GB of storage. Pro includes up to 20 team members, 100GB of storage, and priority email support. Enterprise includes unlimited team members, unlimited storage, a dedicated account manager, and single sign-on (SSO).

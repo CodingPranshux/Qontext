@@ -1,0 +1,1 @@
+We strongly recommend enabling two-factor authentication (2FA) on your account to protect against unauthorized access. If you suspect your account has been compromised, change your password immediately and contact support. We will never ask for your password over email or phone. Login attempts from a new device trigger an email notification for your security.
