@@ -1,8 +1,8 @@
 import clsx from 'clsx';
 import { motion } from 'framer-motion';
 
-const BASE_CLASSES = 'bg-surface border border-border rounded-xl shadow-sm';
-const HOVER_CLASSES = 'transition-all duration-200 hover:border-accent/40 hover:shadow-glow';
+const BASE_CLASSES = 'bg-surface-container border border-outline-variant rounded-xl shadow-sm';
+const HOVER_CLASSES = 'transition-all duration-200 hover:border-outline/50 hover:shadow-card';
 
 /**
  * The "layered surface" pattern shared by every card-like element: a surface

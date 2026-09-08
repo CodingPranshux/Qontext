@@ -3,10 +3,31 @@ import { motion } from 'framer-motion';
 import clsx from 'clsx';
 
 const VARIANT_CLASSES = {
-  primary: 'bg-accent text-bg hover:bg-accent-hover',
-  secondary: 'bg-surface border border-border text-text hover:bg-surface-2 hover:border-accent/40',
-  ghost: 'bg-transparent text-text-secondary hover:bg-surface-2 hover:text-text',
+  // Matches the Stitch reference's filled CTAs (Sign In / Get Started) — an
+  // off-white fill with near-black text, not accent-colored. The accent
+  // (primary) color is reserved for functional accents: links, focus rings,
+  // active nav state, the chat send button.
+  primary: 'bg-on-surface text-surface hover:bg-inverse-surface',
+  secondary: 'bg-surface-container-lowest border border-outline-variant/50 text-on-surface hover:bg-surface-container-high',
+  ghost: 'bg-transparent text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface',
 };
+
+/**
+ * Class-builder counterpart to the Button component, for the handful of
+ * places that need a button-*styled* element that isn't a real <button> (e.g.
+ * a react-router <Link> acting as a CTA) — mirrors Card.jsx's `cardClasses`.
+ */
+export function buttonClasses({ variant = 'primary', icon = false, className } = {}) {
+  return clsx(
+    'inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold leading-none',
+    'transition-colors duration-200 ease-out',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+    'disabled:opacity-50 disabled:pointer-events-none',
+    icon ? 'p-2' : 'px-4 py-2.5',
+    VARIANT_CLASSES[variant],
+    className
+  );
+}
 
 /**
  * Shared button primitive: consistent radius/spacing/focus-ring/hover-transition
@@ -21,15 +42,7 @@ const Button = forwardRef(function Button(
     <motion.button
       ref={ref}
       whileTap={{ scale: 0.96 }}
-      className={clsx(
-        'inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold leading-none',
-        'transition-colors duration-200 ease-out',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
-        'disabled:opacity-50 disabled:pointer-events-none',
-        icon ? 'p-2' : 'px-4 py-2.5',
-        VARIANT_CLASSES[variant],
-        className
-      )}
+      className={buttonClasses({ variant, icon, className })}
       {...props}
     >
       {children}

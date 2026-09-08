@@ -1,23 +1,44 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import clsx from 'clsx';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Send, Bot, User, FileText, X, Sparkles, Search, Database, ChevronDown, CheckCircle2 } from 'lucide-react';
+import {
+  Send,
+  FileText,
+  X,
+  ChevronRight,
+  Database,
+  Sparkles,
+  CheckCircle2,
+  MessageSquare,
+  Copy,
+  Code2,
+  ThumbsUp,
+  ThumbsDown,
+  Filter,
+  CircleCheck,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { askQuestion } from '../lib/chatStream.js';
-import { cardClasses } from '../components/ui/Card.jsx';
+import { listDocuments } from '../lib/api.js';
 
 const CITATION_PATTERN = /\[chunk_id:\s*([^\]]+)\]/g;
 
-const fadeUpVariants = {
-  hidden: { opacity: 0, y: 10 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
-};
+const SUGGESTED_PROMPTS = [
+  'What documents do I have indexed?',
+  'Summarize the most recently uploaded file.',
+  'What sources back up your last answer?',
+];
+
+function formatTime(date) {
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+}
 
 /**
- * Splits an answer into plain-text spans and clickable citation chips,
- * re-run on every render so a chip pops in the moment its closing "]"
- * streams in (a partial "[chunk_id: abc" just renders as plain text until then) —
- * animated distinctly (a spring pop) from the surrounding plain-text spans.
+ * Splits an answer into plain-text spans and numbered citation markers
+ * (matching the source's position in `sources`, so marker "2" and retrieval-
+ * trace row "2" are the same chunk), re-run on every render so a marker pops
+ * in the moment its closing "]" streams in.
  */
 function renderAnswer(text, sources, onCiteClick) {
   const parts = [];
@@ -32,7 +53,8 @@ function renderAnswer(text, sources, onCiteClick) {
     }
 
     const chunkId = match[1];
-    const source = sources.find((s) => s.chunkId === chunkId);
+    const sourceIndex = sources.findIndex((s) => s.chunkId === chunkId);
+    const source = sourceIndex >= 0 ? sources[sourceIndex] : null;
     parts.push(
       <motion.button
         key={key++}
@@ -40,14 +62,13 @@ function renderAnswer(text, sources, onCiteClick) {
         initial={{ scale: 0.6, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
+        whileHover={{ scale: 1.15 }}
+        whileTap={{ scale: 0.9 }}
         title={source ? `${source.sourceFilename} (chunk #${source.chunkIndex})` : 'Unknown source'}
         onClick={() => onCiteClick(source)}
-        className="mx-0.5 inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 align-middle text-[0.78em] font-semibold text-accent transition-colors duration-150 hover:bg-accent/25"
+        className="mx-0.5 inline-flex h-5 w-5 shrink-0 -translate-y-0.5 items-center justify-center rounded-full border border-primary/40 bg-surface-container text-[11px] font-semibold font-code-sm text-primary shadow-sm transition-all hover:border-primary hover:bg-primary/10"
       >
-        <FileText size={11} />
-        {source ? source.sourceFilename : 'source'}
+        {sourceIndex >= 0 ? sourceIndex + 1 : '?'}
       </motion.button>
     );
 
@@ -63,177 +84,235 @@ function renderAnswer(text, sources, onCiteClick) {
 
 function SearchingIndicator({ retrievalQuery, rewritten }) {
   return (
-    <div className="flex items-center gap-2 text-text-secondary">
-      <Search size={14} className="animate-pulse motion-reduce:animate-none" />
-      <span className="text-[0.92rem] leading-relaxed">
-        {rewritten && retrievalQuery ? <>Searching your documents for &ldquo;{retrievalQuery}&rdquo;…</> : 'Searching your documents…'}
+    <div className="my-2 flex items-center gap-2 font-code-sm text-code-sm text-primary">
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+      </span>
+      <span>
+        {rewritten && retrievalQuery ? <>Searching for &ldquo;{retrievalQuery}&rdquo;…</> : 'Searching your documents…'}
       </span>
     </div>
   );
 }
 
-/**
- * Makes the RAG pipeline's work visible instead of hiding it behind a chat
- * bubble: whether the answer actually grounded on the tenant's documents
- * (vs. general knowledge), and — expandable — every candidate chunk that
- * survived retrieval + rerank with its relevance score, not just the ones
- * the model ended up citing.
- */
+function FoundSourcesIndicator({ sources }) {
+  const count = sources.length;
+  return (
+    <div className="flex items-center gap-2 font-code-sm text-code-sm text-on-surface-variant">
+      <Sparkles size={14} className="animate-pulse motion-reduce:animate-none" />
+      <span>{count > 0 ? `Found ${count} source${count === 1 ? '' : 's'} — answering…` : 'Answering from general knowledge…'}</span>
+    </div>
+  );
+}
+
+/** Makes the RAG pipeline's work visible: whether the answer grounded on tenant documents, and every candidate chunk that survived retrieval + rerank. */
 function RetrievalTrace({ turn, onCiteClick }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   if (!turn.searched) return null;
 
   const grounded = turn.citedChunkIds.length > 0;
 
   return (
-    <div className="flex flex-col gap-2 pl-[2.625rem]">
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={clsx(
-            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
-            grounded ? 'bg-success/10 text-success' : 'bg-surface-2 text-text-tertiary'
+    <div className="mt-5 space-y-3 border-t border-outline-variant/60 pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant bg-surface-container-highest px-2.5 py-0.5 font-code-sm text-code-sm text-on-surface">
+          <span className={clsx('h-1.5 w-1.5 rounded-full', grounded ? 'bg-success' : 'bg-outline')} />
+          <span className={clsx('font-medium', grounded && 'text-success')}>{grounded ? 'Grounded' : 'General knowledge'}</span>
+          {grounded && (
+            <>
+              <span className="text-outline-variant">·</span>
+              <span className="text-on-surface-variant">
+                {turn.citedChunkIds.length} source{turn.citedChunkIds.length === 1 ? '' : 's'} cited
+              </span>
+            </>
           )}
-        >
-          {grounded ? <Database size={11} /> : <Sparkles size={11} />}
-          {grounded
-            ? `Grounded · ${turn.citedChunkIds.length} source${turn.citedChunkIds.length === 1 ? '' : 's'}`
-            : 'General knowledge'}
-        </span>
-
-        {turn.sources.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-text-tertiary transition-colors duration-150 hover:bg-surface-2 hover:text-text-secondary"
-          >
-            Retrieval trace ({turn.sources.length})
-            <motion.span animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.15 }}>
-              <ChevronDown size={12} />
-            </motion.span>
-          </button>
+        </div>
+        {turn.latencyMs != null && (
+          <div className="flex items-center gap-3 font-code-sm text-code-sm text-outline">
+            <span>Retrieval: {turn.latencyMs}ms</span>
+          </div>
         )}
       </div>
 
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
+      {turn.sources.length > 0 && (
+        <div className="rounded-lg border border-outline-variant/50 bg-surface-container-lowest/60 transition-all">
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="flex w-full select-none items-center justify-between gap-2 p-3 font-code-sm text-code-sm text-outline transition-colors hover:text-on-surface"
           >
-            <div className={clsx(cardClasses({}), 'mt-1 flex flex-col divide-y divide-border')}>
-              {turn.rewritten && turn.retrievalQuery && (
-                <div className="px-3 py-2 text-xs text-text-tertiary">
-                  Searched for: <span className="text-text-secondary">&ldquo;{turn.retrievalQuery}&rdquo;</span>
+            <span className="flex items-center gap-2">
+              <motion.span animate={{ rotate: open ? 90 : 0 }} transition={{ duration: 0.15 }} className="text-primary">
+                <ChevronRight size={16} />
+              </motion.span>
+              <span className="font-medium text-on-surface">Retrieval trace</span>
+              <span className="text-on-surface-variant">({turn.sources.length} chunks analyzed)</span>
+            </span>
+          </button>
+
+          <AnimatePresence initial={false}>
+            {open && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="space-y-2.5 px-3 pb-3 pt-1">
+                  {turn.rewritten && turn.retrievalQuery && (
+                    <div className="text-[11px] text-on-surface-variant">
+                      Searched for: <span className="text-on-surface">&ldquo;{turn.retrievalQuery}&rdquo;</span>
+                    </div>
+                  )}
+                  {turn.sources.map((source, i) => {
+                    const cited = turn.citedChunkIds.includes(source.chunkId);
+                    const pct = Math.round((source.rerankScore ?? 0) * 100);
+                    return (
+                      <button
+                        type="button"
+                        key={source.chunkId}
+                        id={`citation-card-${i + 1}`}
+                        onClick={() => onCiteClick(source)}
+                        className="w-full rounded border border-outline-variant bg-surface-container p-3 text-left font-code-sm text-code-sm transition-all duration-300 hover:border-primary/40"
+                      >
+                        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                              {i + 1}
+                            </span>
+                            <span className="font-medium text-on-surface">{source.sourceFilename}</span>
+                            <span className="text-outline-variant">·</span>
+                            <span className="text-outline">Chunk #{source.chunkIndex}</span>
+                          </div>
+                          <span className="rounded border border-primary/20 bg-surface-container-highest px-1.5 py-0.5 text-[10px] text-primary">
+                            sim: {(source.rerankScore ?? 0).toFixed(3)}
+                          </span>
+                        </div>
+                        <div className="rounded border border-outline-variant/30 bg-surface-container-lowest/80 p-2 leading-normal text-on-surface-variant">
+                          &ldquo;{(source.text || '').slice(0, 220)}
+                          {(source.text || '').length > 220 ? '…' : ''}&rdquo;
+                        </div>
+                        <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-surface-container-highest">
+                          <div className={clsx('h-full rounded-full', cited ? 'bg-primary' : 'bg-outline/40')} style={{ width: `${pct}%` }} />
+                        </div>
+                        {cited && (
+                          <div className="mt-1.5 flex items-center gap-1 text-[10px] text-success">
+                            <CheckCircle2 size={11} /> Cited in answer
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
-              {turn.sources.map((source) => {
-                const cited = turn.citedChunkIds.includes(source.chunkId);
-                const pct = Math.round((source.rerankScore ?? 0) * 100);
-                return (
-                  <button
-                    type="button"
-                    key={source.chunkId}
-                    onClick={() => onCiteClick(source)}
-                    className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-2"
-                  >
-                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-surface-2 text-text-tertiary">
-                      <FileText size={12} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-xs font-medium text-text-secondary">
-                        {source.sourceFilename} <span className="text-text-tertiary">· chunk #{source.chunkIndex}</span>
-                      </div>
-                      <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-surface-2">
-                        <div
-                          className={clsx('h-full rounded-full', cited ? 'bg-accent' : 'bg-text-tertiary/40')}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                    <span className="shrink-0 text-xs font-semibold tabular-nums text-text-tertiary">{pct}%</span>
-                    {cited && <CheckCircle2 size={13} className="shrink-0 text-success" />}
-                  </button>
-                );
-              })}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 }
 
-function TypingDots() {
+function Turn({ turn, userEmail, onCiteClick }) {
   return (
-    <span className="inline-flex gap-1 py-0.5">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-tertiary motion-reduce:animate-none"
-          style={{ animationDelay: `${i * 0.15}s`, animationDuration: '1s' }}
-        />
-      ))}
-    </span>
-  );
-}
-
-function Turn({ turn, onCiteClick }) {
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: 'easeOut' }}
-      className="flex flex-col gap-3"
-    >
-      <div className="flex justify-end gap-2.5">
-        <div className="max-w-[640px] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-[0.92rem] leading-relaxed text-bg">
-          {turn.question}
+    <motion.div layout initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, ease: 'easeOut' }} className="pt-2">
+      {/* User message */}
+      <div className="flex flex-col items-end">
+        <div className="ml-auto max-w-xl rounded-2xl rounded-tr-sm border border-outline-variant bg-surface-container p-4 shadow-sm transition-colors hover:border-outline/50">
+          <p className="select-text font-body-md text-body-md leading-relaxed text-on-surface">{turn.question}</p>
         </div>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-2 text-text-secondary">
-          <User size={15} />
+        <div className="mr-1 mt-1.5 flex items-center gap-1.5 font-code-sm text-code-sm text-outline">
+          <span>{formatTime(turn.askedAt)}</span>
+          <span className="text-outline-variant">·</span>
+          <span>{userEmail}</span>
         </div>
       </div>
 
-      <div className="flex gap-2.5">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent to-purple-500 text-bg">
-          <Bot size={15} />
-        </div>
-        <div
-          className={clsx(
-            'max-w-[640px] whitespace-pre-wrap px-4 py-2.5 text-[0.92rem] leading-relaxed',
-            turn.status === 'error'
-              ? 'rounded-2xl rounded-bl-md bg-danger/10 text-danger'
-              : clsx(cardClasses({}), 'rounded-2xl rounded-bl-md')
-          )}
-        >
-          {turn.status === 'error' ? (
-            turn.error
-          ) : !turn.searched ? (
-            <SearchingIndicator retrievalQuery={turn.retrievalQuery} rewritten={turn.rewritten} />
-          ) : turn.answer ? (
-            renderAnswer(turn.answer, turn.sources, onCiteClick)
-          ) : (
-            <TypingDots />
-          )}
-        </div>
-      </div>
+      {!turn.searched && <SearchingIndicator retrievalQuery={turn.retrievalQuery} rewritten={turn.rewritten} />}
 
-      {turn.status !== 'error' && <RetrievalTrace turn={turn} onCiteClick={onCiteClick} />}
+      {/* Assistant response */}
+      {(turn.searched || turn.status === 'error') && (
+        <div className="mt-2 flex flex-col items-start">
+          <div
+            className={clsx(
+              'max-w-3xl rounded-2xl rounded-tl-sm border p-5 shadow-sm',
+              turn.status === 'error' ? 'border-error/40 bg-error-container/20 text-on-error-container' : 'border-outline-variant bg-surface-container-low'
+            )}
+          >
+            {turn.status === 'error' ? (
+              <p className="font-body-md text-body-md">{turn.error}</p>
+            ) : turn.answer ? (
+              <div className="select-text whitespace-pre-wrap font-body-md text-body-md leading-relaxed text-on-surface">
+                {renderAnswer(turn.answer, turn.sources, onCiteClick)}
+                {turn.status === 'streaming' && <span className="ml-1 inline-block h-4 w-2 animate-pulse bg-primary align-middle" />}
+              </div>
+            ) : (
+              <FoundSourcesIndicator sources={turn.sources} />
+            )}
+
+            {turn.status !== 'error' && turn.answer && <RetrievalTrace turn={turn} onCiteClick={onCiteClick} />}
+          </div>
+
+          {turn.status === 'done' && (
+            <div className="ml-1 mt-1 flex items-center gap-2 font-code-sm text-code-sm text-outline">
+              <button
+                type="button"
+                onClick={() => navigator.clipboard?.writeText(turn.answer)}
+                className="flex items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-surface-container hover:text-on-surface"
+              >
+                <Copy size={14} />
+                <span>Copy</span>
+              </button>
+              <button type="button" className="flex items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-surface-container hover:text-on-surface">
+                <Code2 size={14} />
+                <span>JSON Trace</span>
+              </button>
+              <button type="button" title="Vote helpful" className="flex items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-surface-container hover:text-on-surface">
+                <ThumbsUp size={14} />
+              </button>
+              <button type="button" title="Vote unhelpful" className="flex items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-surface-container hover:text-on-surface">
+                <ThumbsDown size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </motion.div>
   );
 }
 
 function ChatPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const location = useLocation();
   const [messages, setMessages] = useState([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedSource, setSelectedSource] = useState(null);
+  const [indexStats, setIndexStats] = useState({ docCount: 0, chunkCount: 0 });
   const bottomRef = useRef(null);
+
+  useEffect(() => {
+    if (location.state?.resetAt) setMessages([]);
+  }, [location.state?.resetAt]);
+
+  useEffect(() => {
+    let cancelled = false;
+    listDocuments(token)
+      .then(({ documents }) => {
+        if (cancelled) return;
+        const ready = documents.filter((d) => d.status === 'ready');
+        setIndexStats({
+          docCount: ready.length,
+          chunkCount: ready.reduce((sum, d) => sum + (d.chunkCount || 0), 0),
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
@@ -243,13 +322,9 @@ function ChatPage() {
     setMessages((prev) => prev.map((t) => (t.id === id ? updater(t) : t)));
   }
 
-  async function handleAsk(e) {
-    e.preventDefault();
-    const question = query.trim();
+  async function submitQuestion(question) {
     if (!question || loading) return;
 
-    // Prior completed turns, flattened into the {role, content} shape the
-    // backend expects — this is what lets follow-ups ("what about X?") work.
     const history = messages
       .filter((t) => t.status === 'done')
       .flatMap((t) => [
@@ -258,17 +333,21 @@ function ChatPage() {
       ]);
 
     const id = `${Date.now()}-${Math.random()}`;
+    const askedAt = new Date();
+    const startedAt = performance.now();
     setMessages((prev) => [
       ...prev,
       {
         id,
         question,
+        askedAt,
         answer: '',
         sources: [],
         citedChunkIds: [],
         searched: false,
         retrievalQuery: null,
         rewritten: false,
+        latencyMs: null,
         status: 'streaming',
         error: null,
       },
@@ -281,9 +360,9 @@ function ChatPage() {
         token,
         query: question,
         history,
-        onRetrieval: ({ query: retrievalQuery, rewritten }) =>
-          updateTurn(id, (t) => ({ ...t, retrievalQuery, rewritten })),
-        onSources: (sources) => updateTurn(id, (t) => ({ ...t, sources, searched: true })),
+        onRetrieval: ({ query: retrievalQuery, rewritten }) => updateTurn(id, (t) => ({ ...t, retrievalQuery, rewritten })),
+        onSources: (sources) =>
+          updateTurn(id, (t) => ({ ...t, sources, searched: true, latencyMs: Math.round(performance.now() - startedAt) })),
         onToken: (chunk) => updateTurn(id, (t) => ({ ...t, answer: t.answer + chunk })),
         onDone: (citedChunkIds) => updateTurn(id, (t) => ({ ...t, citedChunkIds, status: 'done' })),
         onError: (message) => updateTurn(id, (t) => ({ ...t, status: 'error', error: message })),
@@ -295,35 +374,51 @@ function ChatPage() {
     }
   }
 
+  function handleAsk(e) {
+    e.preventDefault();
+    submitQuestion(query.trim());
+  }
+
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-6">
+    <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-4 sm:px-6">
+      {/* Index status notice */}
+      <div className="my-2 flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant/40 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+          <span className="font-code-sm text-code-sm text-on-surface-variant">
+            {indexStats.docCount > 0 ? (
+              <>
+                Querying across <span className="text-on-surface">{indexStats.docCount} indexed document{indexStats.docCount === 1 ? '' : 's'}</span> (
+                {indexStats.chunkCount} chunks)
+              </>
+            ) : (
+              'No documents indexed yet'
+            )}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 font-code-sm text-code-sm text-outline">
+          <Database size={14} />
+          <span>hybrid + rerank</span>
+        </div>
+      </div>
+
       {messages.length === 0 ? (
-        <motion.div
-          initial="hidden"
-          animate="visible"
-          variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
-          className="flex flex-1 flex-col items-center justify-center gap-3 text-center"
-        >
-          <div className="relative mb-1 flex h-14 w-14 items-center justify-center">
-            <span className="absolute inset-0 animate-pulse-glow rounded-full bg-accent/30 blur-2xl motion-reduce:animate-none" />
-            <span className="relative flex h-14 w-14 animate-icon-breathe items-center justify-center rounded-full bg-gradient-to-br from-accent to-purple-500 text-bg shadow-glow motion-reduce:animate-none">
-              <Sparkles size={22} />
-            </span>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+          <div className="mb-1 flex h-14 w-14 items-center justify-center rounded-md border border-outline-variant bg-surface-container text-primary">
+            <MessageSquare size={22} />
           </div>
-          <motion.h2 variants={fadeUpVariants} className="text-lg font-semibold text-text">
-            Ask me anything
-          </motion.h2>
-          <motion.p variants={fadeUpVariants} className="max-w-sm text-sm text-text-tertiary">
-            I'll answer from your uploaded documents when they're relevant — with citations back to the source —
-            and chat normally otherwise.
-          </motion.p>
-        </motion.div>
+          <h2 className="font-headline-sm text-headline-sm font-normal text-on-surface">Ask me anything</h2>
+          <p className="max-w-sm font-body-md text-body-md text-on-surface-variant">
+            I&apos;ll answer from your uploaded documents when they&apos;re relevant — with citations back to the source — and
+            chat normally otherwise.
+          </p>
+        </div>
       ) : (
-        <div className="flex-1 overflow-y-auto py-6">
-          <div className="flex flex-col gap-6">
+        <div className="flex-1 overflow-y-auto pb-2 pr-1 sm:pr-2">
+          <div className="flex flex-col gap-1">
             <AnimatePresence initial={false}>
               {messages.map((turn) => (
-                <Turn key={turn.id} turn={turn} onCiteClick={setSelectedSource} />
+                <Turn key={turn.id} turn={turn} userEmail={user?.email} onCiteClick={setSelectedSource} />
               ))}
             </AnimatePresence>
             <div ref={bottomRef} />
@@ -331,29 +426,53 @@ function ChatPage() {
         </div>
       )}
 
-      <div className="border-t border-border py-4 pb-6">
+      <div className="pb-6 pt-2">
+        <div className="mb-1 flex items-center gap-2 overflow-x-auto pb-2">
+          <span className="shrink-0 font-code-sm text-code-sm text-outline">Suggested:</span>
+          {SUGGESTED_PROMPTS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => submitQuestion(p)}
+              disabled={loading}
+              className="shrink-0 rounded-full border border-outline-variant bg-surface-container px-2.5 py-1 font-code-sm text-code-sm text-on-surface-variant transition-all hover:border-outline hover:text-on-surface disabled:opacity-50"
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+
         <form
           onSubmit={handleAsk}
-          className="flex items-center gap-2 rounded-full border border-border bg-surface py-1.5 pl-4 pr-1.5 shadow-sm transition-colors duration-200 focus-within:border-accent focus-within:shadow-glow"
+          className="flex items-center gap-2 rounded-xl border border-outline-variant bg-surface-container p-2 shadow-md transition-all focus-within:border-primary focus-within:ring-1 focus-within:ring-primary sm:gap-3 sm:p-2.5"
         >
+          <button
+            type="button"
+            title="Manage context filter"
+            className="flex shrink-0 items-center justify-center rounded-lg p-1.5 text-outline transition-colors hover:bg-surface-container-high hover:text-on-surface"
+          >
+            <Filter size={20} />
+          </button>
           <input
             type="text"
             placeholder="Ask a question about your documents…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             disabled={loading}
-            className="flex-1 bg-transparent py-2 text-sm text-text outline-none placeholder:text-text-tertiary disabled:opacity-60"
+            className="w-full flex-1 bg-transparent px-1 py-1 font-body-md text-body-md text-on-surface outline-none placeholder:text-outline disabled:opacity-60"
           />
-          <motion.button
+          <button
             type="submit"
-            whileTap={{ scale: 0.9 }}
             disabled={loading || !query.trim()}
             aria-label="Send"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-bg transition-colors duration-200 hover:bg-accent-hover disabled:opacity-40"
+            className="flex shrink-0 items-center justify-center rounded-lg bg-primary p-2.5 text-on-primary shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:opacity-40"
           >
-            <Send size={16} />
-          </motion.button>
+            <Send size={18} />
+          </button>
         </form>
+        <p className="mb-1 mt-2.5 select-none text-center font-code-sm text-code-sm text-outline">
+          Answers are grounded strictly in your tenant&apos;s uploaded files. Numbered chips link to exact chunks.
+        </p>
       </div>
 
       <AnimatePresence>
@@ -365,7 +484,7 @@ function ChatPage() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="fixed inset-0 z-30 bg-slate-950/50 backdrop-blur-[2px]"
+              className="fixed inset-0 z-30 bg-background/70 backdrop-blur-[2px]"
               onClick={() => setSelectedSource(null)}
             />
             <motion.div
@@ -374,25 +493,33 @@ function ChatPage() {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-              className="fixed inset-y-0 right-0 z-40 flex w-full max-w-sm flex-col border-l border-border bg-surface shadow-2xl"
+              className="fixed inset-y-0 right-0 z-40 flex w-full max-w-sm flex-col border-l border-outline-variant bg-surface shadow-card"
             >
-              <div className="flex items-start gap-3 border-b border-border p-5">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-text-secondary">
+              <div className="flex items-start gap-3 border-b border-outline-variant p-5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-container text-on-surface-variant">
                   <FileText size={17} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h3 className="truncate text-sm font-semibold text-text">{selectedSource.sourceFilename}</h3>
-                  <p className="text-xs text-text-tertiary">Chunk #{selectedSource.chunkIndex}</p>
+                  <h3 className="truncate text-sm font-semibold text-on-surface">{selectedSource.sourceFilename}</h3>
+                  <p className="flex items-center gap-1 text-xs text-outline">
+                    Chunk #{selectedSource.chunkIndex}
+                    {selectedSource.rerankScore != null && (
+                      <>
+                        <CircleCheck size={11} className="ml-1.5 text-success" />
+                        sim {selectedSource.rerankScore.toFixed(3)}
+                      </>
+                    )}
+                  </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelectedSource(null)}
-                  className="rounded-lg p-2 text-text-secondary transition-colors duration-150 hover:bg-surface-2 hover:text-text"
+                  className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface"
                 >
                   <X size={16} />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto whitespace-pre-wrap p-5 text-sm leading-relaxed text-text-secondary">
+              <div className="flex-1 overflow-y-auto whitespace-pre-wrap p-5 text-sm leading-relaxed text-on-surface-variant">
                 {selectedSource.text}
               </div>
             </motion.div>
