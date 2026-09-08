@@ -6,7 +6,17 @@ import { API_BASE_URL } from './api.js';
  * browser's EventSource because EventSource only supports GET requests and
  * can't send an Authorization header — both of which we need here.
  */
-export async function askQuestion({ token, query, history = [], onSources, onToken, onDone, onError, signal }) {
+export async function askQuestion({
+  token,
+  query,
+  history = [],
+  onRetrieval,
+  onSources,
+  onToken,
+  onDone,
+  onError,
+  signal,
+}) {
   const response = await fetch(`${API_BASE_URL}/chat/ask`, {
     method: 'POST',
     headers: {
@@ -43,7 +53,8 @@ export async function askQuestion({ token, query, history = [], onSources, onTok
       const event = eventLine.slice('event:'.length).trim();
       const data = JSON.parse(dataLine.slice('data:'.length).trim());
 
-      if (event === 'sources') onSources?.(data.sources);
+      if (event === 'retrieval') onRetrieval?.(data);
+      else if (event === 'sources') onSources?.(data.sources);
       else if (event === 'token') onToken?.(data.content);
       else if (event === 'done') onDone?.(data.citedChunkIds);
       else if (event === 'error') onError?.(data.message);

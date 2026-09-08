@@ -50,6 +50,8 @@ export async function postAsk(req, res) {
       search: runRetrieval, // Phase 5: cached + logged retrieval instead of Phase 3's raw search
       streamChatCompletion: instrumentedStreamChatCompletion, // Phase 5: logged generate stage
       rewriteQuery: instrumentedRewriteQuery, // Phase 5: logged rewrite stage
+      onRetrievalQuery: ({ query: retrievalQuery, rewritten }) =>
+        writeSseEvent(res, 'retrieval', { query: retrievalQuery, rewritten }),
       onSources: (sources) => writeSseEvent(res, 'sources', { sources }),
       onToken: (token) => writeSseEvent(res, 'token', { content: token }),
     });

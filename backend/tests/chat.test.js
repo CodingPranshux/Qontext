@@ -256,6 +256,43 @@ describe('POST /api/chat/ask', () => {
     expect(embedTextsMock).toHaveBeenCalledWith(['REWRITTEN(What about shipping?)']);
   });
 
+  it('emits a retrieval event with the unmodified query when nothing was rewritten', async () => {
+    const { token } = await signupAndLogin();
+
+    const res = await request(app)
+      .post('/api/chat/ask')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ query: 'What is the refund policy?' });
+
+    expect(res.status).toBe(200);
+    const events = parseSse(res.text);
+    const retrievalEvent = events.find((e) => e.event === 'retrieval');
+    expect(retrievalEvent).toBeTruthy();
+    expect(retrievalEvent.data).toEqual({ query: 'What is the refund policy?', rewritten: false });
+
+    // The retrieval event must arrive before sources/tokens, so the client can
+    // show a "searching" state for the actual duration of retrieval.
+    expect(events.indexOf(retrievalEvent)).toBeLessThan(events.findIndex((e) => e.event === 'sources'));
+  });
+
+  it('emits a retrieval event with the rewritten query and rewritten:true for a follow-up', async () => {
+    const { token } = await signupAndLogin();
+    const history = [
+      { role: 'user', content: 'What is the refund policy?' },
+      { role: 'assistant', content: 'Refunds are allowed within 30 days.' },
+    ];
+
+    const res = await request(app)
+      .post('/api/chat/ask')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ query: 'What about shipping?', history });
+
+    expect(res.status).toBe(200);
+    const events = parseSse(res.text);
+    const retrievalEvent = events.find((e) => e.event === 'retrieval');
+    expect(retrievalEvent.data).toEqual({ query: 'REWRITTEN(What about shipping?)', rewritten: true });
+  });
+
   it('falls back to the raw query (via the cheap heuristic) if rewriting fails, without breaking the request', async () => {
     const { token } = await signupAndLogin();
     const history = [

@@ -90,6 +90,7 @@ export async function generateAnswer({
   search = defaultSearch,
   streamChatCompletion = defaultStreamChatCompletion,
   rewriteQuery = defaultRewriteQuery,
+  onRetrievalQuery,
   onSources,
   onToken,
 }) {
@@ -98,6 +99,11 @@ export async function generateAnswer({
   }
 
   const retrievalQuery = await resolveRetrievalQuery({ query, history, rewriteQuery });
+  // Surfaced to the client so the UI can show what was actually searched for
+  // (e.g. a follow-up rewritten into a standalone question) — retrieval
+  // transparency, not just the final answer.
+  onRetrievalQuery?.({ query: retrievalQuery, rewritten: retrievalQuery !== query });
+
   const { results } = await search({ tenantId, query: retrievalQuery });
 
   onSources?.(results);

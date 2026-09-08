@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Send, Bot, User, FileText, X, Sparkles } from 'lucide-react';
+import { Send, Bot, User, FileText, X, Sparkles, Search, Database, ChevronDown, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { askQuestion } from '../lib/chatStream.js';
 import { cardClasses } from '../components/ui/Card.jsx';
@@ -61,6 +61,111 @@ function renderAnswer(text, sources, onCiteClick) {
   return parts;
 }
 
+function SearchingIndicator({ retrievalQuery, rewritten }) {
+  return (
+    <div className="flex items-center gap-2 text-text-secondary">
+      <Search size={14} className="animate-pulse motion-reduce:animate-none" />
+      <span className="text-[0.92rem] leading-relaxed">
+        {rewritten && retrievalQuery ? <>Searching your documents for &ldquo;{retrievalQuery}&rdquo;…</> : 'Searching your documents…'}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Makes the RAG pipeline's work visible instead of hiding it behind a chat
+ * bubble: whether the answer actually grounded on the tenant's documents
+ * (vs. general knowledge), and — expandable — every candidate chunk that
+ * survived retrieval + rerank with its relevance score, not just the ones
+ * the model ended up citing.
+ */
+function RetrievalTrace({ turn, onCiteClick }) {
+  const [open, setOpen] = useState(false);
+  if (!turn.searched) return null;
+
+  const grounded = turn.citedChunkIds.length > 0;
+
+  return (
+    <div className="flex flex-col gap-2 pl-[2.625rem]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={clsx(
+            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
+            grounded ? 'bg-success/10 text-success' : 'bg-surface-2 text-text-tertiary'
+          )}
+        >
+          {grounded ? <Database size={11} /> : <Sparkles size={11} />}
+          {grounded
+            ? `Grounded · ${turn.citedChunkIds.length} source${turn.citedChunkIds.length === 1 ? '' : 's'}`
+            : 'General knowledge'}
+        </span>
+
+        {turn.sources.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-text-tertiary transition-colors duration-150 hover:bg-surface-2 hover:text-text-secondary"
+          >
+            Retrieval trace ({turn.sources.length})
+            <motion.span animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.15 }}>
+              <ChevronDown size={12} />
+            </motion.span>
+          </button>
+        )}
+      </div>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className={clsx(cardClasses({}), 'mt-1 flex flex-col divide-y divide-border')}>
+              {turn.rewritten && turn.retrievalQuery && (
+                <div className="px-3 py-2 text-xs text-text-tertiary">
+                  Searched for: <span className="text-text-secondary">&ldquo;{turn.retrievalQuery}&rdquo;</span>
+                </div>
+              )}
+              {turn.sources.map((source) => {
+                const cited = turn.citedChunkIds.includes(source.chunkId);
+                const pct = Math.round((source.rerankScore ?? 0) * 100);
+                return (
+                  <button
+                    type="button"
+                    key={source.chunkId}
+                    onClick={() => onCiteClick(source)}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-2"
+                  >
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-surface-2 text-text-tertiary">
+                      <FileText size={12} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-medium text-text-secondary">
+                        {source.sourceFilename} <span className="text-text-tertiary">· chunk #{source.chunkIndex}</span>
+                      </div>
+                      <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-surface-2">
+                        <div
+                          className={clsx('h-full rounded-full', cited ? 'bg-accent' : 'bg-text-tertiary/40')}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-xs font-semibold tabular-nums text-text-tertiary">{pct}%</span>
+                    {cited && <CheckCircle2 size={13} className="shrink-0 text-success" />}
+                  </button>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function TypingDots() {
   return (
     <span className="inline-flex gap-1 py-0.5">
@@ -76,8 +181,6 @@ function TypingDots() {
 }
 
 function Turn({ turn, onCiteClick }) {
-  const citedSources = turn.sources.filter((s) => turn.citedChunkIds.includes(s.chunkId));
-
   return (
     <motion.div
       layout
@@ -107,31 +210,19 @@ function Turn({ turn, onCiteClick }) {
               : clsx(cardClasses({}), 'rounded-2xl rounded-bl-md')
           )}
         >
-          {turn.status === 'error' ? turn.error : turn.answer ? renderAnswer(turn.answer, turn.sources, onCiteClick) : <TypingDots />}
+          {turn.status === 'error' ? (
+            turn.error
+          ) : !turn.searched ? (
+            <SearchingIndicator retrievalQuery={turn.retrievalQuery} rewritten={turn.rewritten} />
+          ) : turn.answer ? (
+            renderAnswer(turn.answer, turn.sources, onCiteClick)
+          ) : (
+            <TypingDots />
+          )}
         </div>
       </div>
 
-      {citedSources.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 pl-[2.625rem]">
-          <span className="mr-0.5 text-xs text-text-tertiary">Sources</span>
-          {citedSources.map((source, i) => (
-            <motion.button
-              key={source.chunkId}
-              type="button"
-              initial={{ scale: 0.6, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 20, delay: i * 0.05 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => onCiteClick(source)}
-              className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent transition-colors duration-150 hover:bg-accent/20"
-            >
-              <FileText size={11} />
-              {source.sourceFilename}
-            </motion.button>
-          ))}
-        </div>
-      )}
+      {turn.status !== 'error' && <RetrievalTrace turn={turn} onCiteClick={onCiteClick} />}
     </motion.div>
   );
 }
@@ -169,7 +260,18 @@ function ChatPage() {
     const id = `${Date.now()}-${Math.random()}`;
     setMessages((prev) => [
       ...prev,
-      { id, question, answer: '', sources: [], citedChunkIds: [], status: 'streaming', error: null },
+      {
+        id,
+        question,
+        answer: '',
+        sources: [],
+        citedChunkIds: [],
+        searched: false,
+        retrievalQuery: null,
+        rewritten: false,
+        status: 'streaming',
+        error: null,
+      },
     ]);
     setQuery('');
     setLoading(true);
@@ -179,7 +281,9 @@ function ChatPage() {
         token,
         query: question,
         history,
-        onSources: (sources) => updateTurn(id, (t) => ({ ...t, sources })),
+        onRetrieval: ({ query: retrievalQuery, rewritten }) =>
+          updateTurn(id, (t) => ({ ...t, retrievalQuery, rewritten })),
+        onSources: (sources) => updateTurn(id, (t) => ({ ...t, sources, searched: true })),
         onToken: (chunk) => updateTurn(id, (t) => ({ ...t, answer: t.answer + chunk })),
         onDone: (citedChunkIds) => updateTurn(id, (t) => ({ ...t, citedChunkIds, status: 'done' })),
         onError: (message) => updateTurn(id, (t) => ({ ...t, status: 'error', error: message })),
