@@ -1,4 +1,5 @@
 import { config } from '../config/index.js';
+import { fetchWithRetry } from '../utils/fetchWithRetry.js';
 
 /**
  * Cohere Rerank (rerank-english-v3.0) is used as the cross-encoder reranking
@@ -24,7 +25,7 @@ export async function rerank({ query, documents, topN }) {
     throw err;
   }
 
-  const response = await fetch(config.reranker.apiUrl, {
+  const response = await fetchWithRetry(config.reranker.apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

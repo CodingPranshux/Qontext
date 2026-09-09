@@ -86,7 +86,17 @@ export async function search({
     return { results: [], debug: { vectorResults, bm25Results, fused } };
   }
 
-  const results = await rerank({ query, documents: candidates, topN: Math.min(rerankTopN, candidates.length) });
+  // The reranker is a hosted API with its own (often tight, e.g. Cohere free
+  // tier's 10 req/min) rate limit — a still-exhausted quota after retries
+  // shouldn't take the whole search down. Fall back to the RRF-fused order
+  // (already relevance-ordered, just not cross-encoder-scored) instead of
+  // throwing, same pattern as the query-rewrite fallback above it.
+  let results;
+  try {
+    results = await rerank({ query, documents: candidates, topN: Math.min(rerankTopN, candidates.length) });
+  } catch {
+    results = candidates.slice(0, rerankTopN).map((chunk) => ({ ...chunk, rerankScore: null }));
+  }
 
   return { results, debug: { vectorResults, bm25Results, fused } };
 }
