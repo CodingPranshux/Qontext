@@ -1,7 +1,20 @@
+import { countTokens } from 'gpt-tokenizer';
 import { config } from '../config/index.js';
 import { fetchWithRetry } from '../utils/fetchWithRetry.js';
+import { AsyncTokenBucket } from '../utils/rateLimiter.js';
 
 const EMBEDDING_CONCURRENCY = 5;
+
+// Gemini's free tier for gemini-embedding-001 is 100 req/min and 30,000
+// tokens/min (confirmed from the account's own rate-limit dashboard — a
+// bulk document upload was measuring 29.96K/30K TPM right before a burst of
+// 429s). Concurrency alone doesn't bound *throughput* — 5 fast workers can
+// still push well past 30K tokens/min on a large document. These buckets
+// pace actual request/token dispatch to stay under the limit, at 80%
+// headroom so gpt-tokenizer's count (an estimate — Gemini's own tokenizer
+// may differ slightly) and any concurrent chat traffic still fit safely.
+const requestBucket = new AsyncTokenBucket({ capacity: 80, refillPerSecond: 80 / 60 });
+const tokenBucket = new AsyncTokenBucket({ capacity: 24_000, refillPerSecond: 24_000 / 60 });
 
 /**
  * Runs fn(item) across items with at most `limit` in flight at once, e.g.
@@ -36,6 +49,12 @@ async function mapWithConcurrency(items, limit, fn) {
 async function embedOne(text) {
   const url = `${config.embedding.apiUrl}/${config.embedding.model}:embedContent`;
 
+  // Wait for both a request slot and enough token budget in the current
+  // minute before dispatching — this is what actually keeps us under
+  // Gemini's per-minute caps, not just the in-flight concurrency cap below.
+  await requestBucket.acquire(1);
+  await tokenBucket.acquire(countTokens(text));
+
   const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: {
@@ -63,10 +82,11 @@ async function embedOne(text) {
 }
 
 /**
- * Embeds a batch of texts, in the same order as the input. Capped at
- * EMBEDDING_CONCURRENCY in-flight requests — a large document can produce
- * hundreds of chunks, and firing all of them at once routinely blows through
- * Gemini's free-tier per-minute rate limit.
+ * Embeds a batch of texts, in the same order as the input. Dispatch is
+ * throttled by the module-level request/token buckets above (shared with
+ * every other embedTexts() caller, e.g. a chat question's query embedding,
+ * since Gemini's rate limit is per-account, not per-call); EMBEDDING_CONCURRENCY
+ * just bounds how many chunks are queued waiting on those buckets at once.
  */
 export async function embedTexts(texts) {
   if (!config.embedding.apiKey) {
