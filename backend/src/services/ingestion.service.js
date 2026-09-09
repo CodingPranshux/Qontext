@@ -53,34 +53,47 @@ export async function ingestDocument({ tenantId, file, embedTexts = defaultEmbed
     return { document, chunkCount: 0 };
   }
 
-  const embeddings = await embedTexts(chunks.map((chunk) => chunk.text));
+  // Embedding calls out to a rate-limited third-party API and can fail even
+  // after the built-in retries (see fetchWithRetry) — e.g. a burst of
+  // uploads exhausting the free-tier quota for the minute. Surface that as a
+  // 'failed' document with a reason rather than leaving it stuck in
+  // 'processing' forever with no way for the user to tell what happened.
+  try {
+    const embeddings = await embedTexts(chunks.map((chunk) => chunk.text));
 
-  const chunkDocs = await Chunk.insertMany(
-    chunks.map((chunk) => ({
-      tenantId,
-      documentId: document._id,
-      chunkIndex: chunk.index,
-      text: chunk.text,
-      startOffset: chunk.startOffset,
-      endOffset: chunk.endOffset,
-      tokenCount: chunk.tokenCount,
-      sourceFilename: file.originalname,
-    }))
-  );
+    const chunkDocs = await Chunk.insertMany(
+      chunks.map((chunk) => ({
+        tenantId,
+        documentId: document._id,
+        chunkIndex: chunk.index,
+        text: chunk.text,
+        startOffset: chunk.startOffset,
+        endOffset: chunk.endOffset,
+        tokenCount: chunk.tokenCount,
+        sourceFilename: file.originalname,
+      }))
+    );
 
-  await Promise.all(
-    chunkDocs.map((chunkDoc, i) =>
-      vectorStore.upsertVector({
-        tenantId: tenantId.toString(),
-        chunkId: chunkDoc._id.toString(),
-        embedding: embeddings[i],
-      })
-    )
-  );
+    await Promise.all(
+      chunkDocs.map((chunkDoc, i) =>
+        vectorStore.upsertVector({
+          tenantId: tenantId.toString(),
+          chunkId: chunkDoc._id.toString(),
+          embedding: embeddings[i],
+        })
+      )
+    );
 
-  document.status = 'ready';
-  document.chunkCount = chunkDocs.length;
-  await document.save();
+    document.status = 'ready';
+    document.chunkCount = chunkDocs.length;
+    await document.save();
 
-  return { document, chunkCount: chunkDocs.length };
+    return { document, chunkCount: chunkDocs.length };
+  } catch (err) {
+    document.status = 'failed';
+    document.error = err.message;
+    await document.save();
+
+    return { document, chunkCount: 0 };
+  }
 }

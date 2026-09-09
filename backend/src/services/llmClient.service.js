@@ -1,4 +1,5 @@
 import { config } from '../config/index.js';
+import { fetchWithRetry } from '../utils/fetchWithRetry.js';
 
 /**
  * Streams one chat completion via Groq's OpenAI-compatible chat completions
@@ -18,7 +19,7 @@ export async function streamChatCompletion({ systemPrompt, history = [], userPro
     throw err;
   }
 
-  const response = await fetch(config.llm.apiUrl, {
+  const response = await fetchWithRetry(config.llm.apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

@@ -13,6 +13,7 @@ export async function getDocuments(req, res, next) {
         chunkCount: doc.chunkCount,
         sizeBytes: doc.sizeBytes,
         createdAt: doc.createdAt,
+        error: doc.error,
       })),
     });
   } catch (err) {
@@ -34,6 +35,7 @@ export async function postUpload(req, res, next) {
         filename: document.filename,
         status: document.status,
         chunkCount,
+        error: document.error,
       },
     });
   } catch (err) {

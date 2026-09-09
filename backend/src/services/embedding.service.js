@@ -1,4 +1,28 @@
 import { config } from '../config/index.js';
+import { fetchWithRetry } from '../utils/fetchWithRetry.js';
+
+const EMBEDDING_CONCURRENCY = 5;
+
+/**
+ * Runs fn(item) across items with at most `limit` in flight at once, e.g.
+ * so a large document's chunks don't all hit the embedding API in one burst
+ * and blow through its free-tier rate limit.
+ */
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+
+  async function worker() {
+    while (next < items.length) {
+      const i = next;
+      next += 1;
+      results[i] = await fn(items[i], i);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
 
 /**
  * Embeds one text via Google's Gemini embedding API (gemini-embedding-001
@@ -12,7 +36,7 @@ import { config } from '../config/index.js';
 async function embedOne(text) {
   const url = `${config.embedding.apiUrl}/${config.embedding.model}:embedContent`;
 
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -39,9 +63,10 @@ async function embedOne(text) {
 }
 
 /**
- * Embeds a batch of texts, in the same order as the input. This project's
- * chunk-per-document counts are small enough that N parallel single-item
- * calls are well within Gemini's free-tier rate limits.
+ * Embeds a batch of texts, in the same order as the input. Capped at
+ * EMBEDDING_CONCURRENCY in-flight requests — a large document can produce
+ * hundreds of chunks, and firing all of them at once routinely blows through
+ * Gemini's free-tier per-minute rate limit.
  */
 export async function embedTexts(texts) {
   if (!config.embedding.apiKey) {
@@ -50,5 +75,5 @@ export async function embedTexts(texts) {
     throw err;
   }
 
-  return Promise.all(texts.map((text) => embedOne(text)));
+  return mapWithConcurrency(texts, EMBEDDING_CONCURRENCY, embedOne);
 }

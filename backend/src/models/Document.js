@@ -8,6 +8,7 @@ const documentSchema = new mongoose.Schema(
     sizeBytes: { type: Number, required: true },
     status: { type: String, enum: ['processing', 'ready', 'failed'], default: 'processing' },
     chunkCount: { type: Number, default: 0 },
+    error: { type: String, default: null },
   },
   { timestamps: true }
 );

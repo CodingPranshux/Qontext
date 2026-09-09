@@ -1,4 +1,5 @@
 import { config } from '../config/index.js';
+import { fetchWithRetry } from '../utils/fetchWithRetry.js';
 
 const REWRITE_SYSTEM_PROMPT = `Given a conversation history and a follow-up question, rewrite the follow-up into a standalone question that contains everything needed to understand it without the history — resolve pronouns and implicit references (e.g. "what about X" -> "What is X's <the actual thing being asked about>?").
 
@@ -27,7 +28,7 @@ export async function rewriteQuery({ query, history }) {
     throw err;
   }
 
-  const response = await fetch(config.llm.apiUrl, {
+  const response = await fetchWithRetry(config.llm.apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
