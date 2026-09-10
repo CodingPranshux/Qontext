@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { config } from '../config/index.js';
 import { requireAuth, rejectClientTenantId } from '../middleware/auth.middleware.js';
-import { getDocuments, postUpload } from '../controllers/documents.controller.js';
+import { getDocuments, postUpload, deleteDocument } from '../controllers/documents.controller.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -18,5 +18,7 @@ router.get('/', rejectClientTenantId, getDocuments);
 // multer must run before rejectClientTenantId so req.body (multipart fields)
 // is populated by the time the tenant_id check inspects it.
 router.post('/upload', upload.single('file'), rejectClientTenantId, postUpload);
+
+router.delete('/:id', rejectClientTenantId, deleteDocument);
 
 export default router;

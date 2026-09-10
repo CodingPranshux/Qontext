@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Link, NavLink, useLocation } fr
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion';
 import { LogOut, User, Command } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+import { ChatProvider } from './context/ChatContext.jsx';
 import Brand from './components/Brand.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
 import LandingPage from './pages/LandingPage.jsx';
@@ -196,9 +197,11 @@ function App() {
   return (
     <MotionConfig reducedMotion="user">
       <AuthProvider>
-        <BrowserRouter>
-          <Shell />
-        </BrowserRouter>
+        <ChatProvider>
+          <BrowserRouter>
+            <Shell />
+          </BrowserRouter>
+        </ChatProvider>
       </AuthProvider>
     </MotionConfig>
   );

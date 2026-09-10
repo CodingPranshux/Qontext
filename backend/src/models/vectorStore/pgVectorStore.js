@@ -43,6 +43,12 @@ async function clearAll() {
   await pool.query(`TRUNCATE ${TABLE}`);
 }
 
+async function deleteByChunkIds(chunkIds) {
+  if (chunkIds.length === 0) return;
+  const pool = getPgPool();
+  await pool.query(`DELETE FROM ${TABLE} WHERE chunk_id = ANY($1)`, [chunkIds]);
+}
+
 // Cosine similarity search (pgvector's <=> operator is cosine *distance*, so
 // similarity = 1 - distance), always scoped to one tenant. This is Layer 3's
 // vector-search leg of hybrid retrieval.
@@ -59,4 +65,4 @@ async function queryTopK({ tenantId, embedding, topK }) {
   return rows.map((row) => ({ chunkId: row.chunk_id, score: Number(row.score) }));
 }
 
-export default { init, upsertVector, findByTenant, clearAll, queryTopK };
+export default { init, upsertVector, findByTenant, clearAll, queryTopK, deleteByChunkIds };

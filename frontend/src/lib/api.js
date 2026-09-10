@@ -45,6 +45,15 @@ export async function login({ email, password }) {
   return parseJsonOrThrow(response); // { token, user }
 }
 
+export async function loginWithGoogle(idToken) {
+  const response = await fetch(`${API_BASE_URL}/auth/google`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken }),
+  });
+  return parseJsonOrThrow(response); // { token, user }
+}
+
 export async function listDocuments(token) {
   const response = await fetch(`${API_BASE_URL}/documents`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -62,4 +71,41 @@ export async function uploadDocument({ token, file }) {
     body: formData,
   });
   return parseJsonOrThrow(response); // { document: {...} }
+}
+
+export async function deleteDocument({ token, id }) {
+  const response = await fetch(`${API_BASE_URL}/documents/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok && response.status !== 204) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error?.message || `Request failed (${response.status})`);
+  }
+}
+
+export async function getActiveConversation(token) {
+  const response = await fetch(`${API_BASE_URL}/conversations/active`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return parseJsonOrThrow(response); // { turns: [...] }
+}
+
+export async function appendTurn({ token, turn }) {
+  const response = await fetch(`${API_BASE_URL}/conversations/active/turns`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(turn),
+  });
+  return parseJsonOrThrow(response); // { turn: {...} }
+}
+
+export async function clearActiveConversation(token) {
+  const response = await fetch(`${API_BASE_URL}/conversations/active`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Request failed (${response.status})`);
+  }
 }

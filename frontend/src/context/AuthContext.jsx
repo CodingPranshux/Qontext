@@ -1,5 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { getStoredToken, setStoredToken, login as apiLogin, signup as apiSignup } from '../lib/api.js';
+import {
+  getStoredToken,
+  setStoredToken,
+  login as apiLogin,
+  signup as apiSignup,
+  loginWithGoogle as apiLoginWithGoogle,
+} from '../lib/api.js';
 
 const AuthContext = createContext(null);
 
@@ -18,6 +24,13 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
+  const loginWithGoogle = useCallback(async (idToken) => {
+    const data = await apiLoginWithGoogle(idToken);
+    setToken(data.token);
+    setUser(data.user);
+    return data;
+  }, []);
+
   const signup = useCallback(
     async (email, password, tenantName) => {
       await apiSignup({ email, password, tenantName });
@@ -31,7 +44,9 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
-  return <AuthContext.Provider value={{ token, user, login, signup, logout }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ token, user, login, loginWithGoogle, signup, logout }}>{children}</AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

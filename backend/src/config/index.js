@@ -10,6 +10,13 @@ export const config = {
     expiresIn: process.env.JWT_EXPIRES_IN || '1d',
   },
 
+  // "Continue with Google" — ID-token flow, so only the client ID (public,
+  // shared with the frontend) is needed here to verify a token's audience;
+  // no client secret involved.
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+  },
+
   mongodb: {
     uri: process.env.MONGODB_URI,
   },

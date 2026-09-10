@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertCircle,
@@ -6,37 +6,28 @@ import {
   ArrowRight,
   AtSign,
   CheckCircle2,
-  ChevronDown,
   Database,
   Eye,
   EyeOff,
   Github,
-  KeyRound,
   Loader2,
   Lock,
   Shield,
   ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
-
-const REGIONS = [
-  { value: 'us-east-1', label: 'us-east-1 (N. Virginia) · AES-256' },
-  { value: 'eu-central-1', label: 'eu-central-1 (Frankfurt) · GDPR Encrypted' },
-  { value: 'ap-northeast-1', label: 'ap-northeast-1 (Tokyo) · Sovereign Tier' },
-  { value: 'us-west-2', label: 'us-west-2 (Oregon) · Low Latency' },
-];
+import GoogleSignInButton from './GoogleSignInButton.jsx';
 
 function slugify(value) {
   return (value || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
 }
 
 function AuthPanel({ initialMode = 'login' }) {
-  const { login, signup } = useAuth();
+  const { login, signup, loginWithGoogle } = useAuth();
   const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [tenantName, setTenantName] = useState('acme-corp');
-  const [region, setRegion] = useState('us-east-1');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -58,6 +49,23 @@ function AuthPanel({ initialMode = 'login' }) {
     }
   }
 
+  const handleGoogleCredential = useCallback(
+    async (idToken) => {
+      setError(null);
+      setBusy(true);
+      try {
+        await loginWithGoogle(idToken);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [loginWithGoogle]
+  );
+
+  const handleGoogleError = useCallback((message) => setError(message), []);
+
   return mode === 'login' ? (
     <LoginView
       email={email}
@@ -70,6 +78,8 @@ function AuthPanel({ initialMode = 'login' }) {
       busy={busy}
       onSubmit={handleSubmit}
       onSwitchMode={() => setMode('signup')}
+      onGoogleCredential={handleGoogleCredential}
+      onGoogleError={handleGoogleError}
     />
   ) : (
     <SignupView
@@ -79,20 +89,33 @@ function AuthPanel({ initialMode = 'login' }) {
       setPassword={setPassword}
       tenantName={tenantName}
       setTenantName={setTenantName}
-      region={region}
-      setRegion={setRegion}
       showPassword={showPassword}
       setShowPassword={setShowPassword}
       error={error}
       busy={busy}
       onSubmit={handleSubmit}
       onSwitchMode={() => setMode('login')}
+      onGoogleCredential={handleGoogleCredential}
+      onGoogleError={handleGoogleError}
     />
   );
 }
 
 /** Mirrors the Stitch "Sign In" screen exactly (M3 token palette). */
-function LoginView({ email, setEmail, password, setPassword, showPassword, setShowPassword, error, busy, onSubmit, onSwitchMode }) {
+function LoginView({
+  email,
+  setEmail,
+  password,
+  setPassword,
+  showPassword,
+  setShowPassword,
+  error,
+  busy,
+  onSubmit,
+  onSwitchMode,
+  onGoogleCredential,
+  onGoogleError,
+}) {
   return (
     <div className="relative flex w-full flex-1 flex-col items-center justify-between px-4 py-8">
       <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center overflow-hidden">
@@ -216,6 +239,7 @@ function LoginView({ email, setEmail, password, setPassword, showPassword, setSh
           </div>
 
           <div className="space-y-2.5">
+            <GoogleSignInButton onCredential={onGoogleCredential} onError={onGoogleError} />
             <button
               type="button"
               disabled
@@ -224,15 +248,6 @@ function LoginView({ email, setEmail, password, setPassword, showPassword, setSh
             >
               <Github size={16} />
               <span>Continue with GitHub</span>
-            </button>
-            <button
-              type="button"
-              disabled
-              title="Coming soon"
-              className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-outline-variant/40 bg-surface-container-lowest px-4 py-2.5 font-label-md text-label-md text-on-surface opacity-60"
-            >
-              <KeyRound size={18} className="text-primary" />
-              <span>Enterprise SSO (SAML 2.0 / OIDC)</span>
             </button>
           </div>
 
@@ -285,14 +300,14 @@ function SignupView({
   setPassword,
   tenantName,
   setTenantName,
-  region,
-  setRegion,
   showPassword,
   setShowPassword,
   error,
   busy,
   onSubmit,
   onSwitchMode,
+  onGoogleCredential,
+  onGoogleError,
 }) {
   return (
     <div className="relative flex w-full flex-1 flex-col justify-between bg-[#09090b] text-[#fafafa] selection:bg-[#3b82f6] selection:text-[#ffffff]">
@@ -414,32 +429,6 @@ function SignupView({
                 </div>
               </div>
 
-              <div>
-                <div className="mb-1.5 flex items-center justify-between">
-                  <label htmlFor="primary-region" className="text-xs font-medium text-[#fafafa]">
-                    Primary Region
-                  </label>
-                  <span className="rounded bg-[#3b82f6]/10 px-1.5 py-0.5 font-mono text-[10px] text-[#3b82f6]">FIPS 140-2</span>
-                </div>
-                <div className="relative">
-                  <select
-                    id="primary-region"
-                    value={region}
-                    onChange={(e) => setRegion(e.target.value)}
-                    className="w-full cursor-pointer appearance-none rounded-lg border border-[#27272a] bg-[#111113] px-3.5 py-2.5 font-mono text-sm text-[#fafafa] transition-all focus:border-[#3b82f6] focus:outline-none focus:ring-1 focus:ring-[#3b82f6]"
-                  >
-                    {REGIONS.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#71717a]">
-                    <ChevronDown size={18} />
-                  </div>
-                </div>
-              </div>
-
               {error && (
                 <div className="flex items-start gap-2 rounded-lg bg-[#93000a]/20 px-3 py-2.5 text-sm leading-snug text-[#ffdad6]">
                   <AlertCircle size={16} className="mt-0.5 shrink-0" />
@@ -464,6 +453,15 @@ function SignupView({
                 <span className="underline hover:text-[#a1a1aa]">Data Processing Addendum</span>.
               </p>
             </form>
+
+            <div className="relative my-6 flex items-center justify-center">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-[#27272a]" />
+              </div>
+              <span className="relative bg-[#18181b] px-3 text-[11px] uppercase tracking-wider text-[#71717a]">Or continue with</span>
+            </div>
+
+            <GoogleSignInButton onCredential={onGoogleCredential} onError={onGoogleError} />
 
             <div className="my-6 border-t border-[#27272a]" />
 

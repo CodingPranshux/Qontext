@@ -20,6 +20,10 @@ async function clearAll() {
   store.clear();
 }
 
+async function deleteByChunkIds(chunkIds) {
+  for (const chunkId of chunkIds) store.delete(chunkId);
+}
+
 function cosineSimilarity(a, b) {
   let dot = 0;
   let normA = 0;
@@ -41,4 +45,4 @@ async function queryTopK({ tenantId, embedding, topK }) {
     .slice(0, topK);
 }
 
-export default { init, upsertVector, findByTenant, clearAll, queryTopK };
+export default { init, upsertVector, findByTenant, clearAll, queryTopK, deleteByChunkIds };

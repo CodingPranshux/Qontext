@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { listDocuments, uploadDocument } from '../lib/api.js';
+import { listDocuments, uploadDocument, deleteDocument } from '../lib/api.js';
 
 const ACCEPTED_EXTENSIONS = ['.pdf', '.txt'];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -85,6 +85,7 @@ function UploadPage() {
   const [loadingList, setLoadingList] = useState(true);
   const [pendingUploads, setPendingUploads] = useState([]);
   const [dragging, setDragging] = useState(false);
+  const [deletingIds, setDeletingIds] = useState(() => new Set());
   const dragCounter = useRef(0);
   const fileInputRef = useRef(null);
 
@@ -149,6 +150,25 @@ function UploadPage() {
     e.preventDefault();
     dragCounter.current -= 1;
     if (dragCounter.current <= 0) setDragging(false);
+  }
+
+  async function handleDelete(doc) {
+    if (!window.confirm(`Delete "${doc.filename}"? This removes it and its embeddings permanently.`)) return;
+
+    setDeletingIds((prev) => new Set(prev).add(doc.id));
+    try {
+      await deleteDocument({ token, id: doc.id });
+      setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+    } catch {
+      // Best-effort UX: leave the row in place so the user can retry: a
+      // failed delete shouldn't quietly make the document appear gone.
+    } finally {
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(doc.id);
+        return next;
+      });
+    }
   }
 
   const readyDocs = documents.filter((d) => d.status === 'ready');
@@ -317,9 +337,11 @@ function UploadPage() {
                       <button
                         type="button"
                         title="Delete document and purge vectors"
-                        className="rounded-md p-1.5 text-outline transition-colors hover:bg-surface-container-high hover:text-error"
+                        onClick={() => handleDelete(doc)}
+                        disabled={deletingIds.has(doc.id)}
+                        className="rounded-md p-1.5 text-outline transition-colors hover:bg-surface-container-high hover:text-error disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        <Trash2 size={18} />
+                        {deletingIds.has(doc.id) ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
                       </button>
                     </div>
                   </div>

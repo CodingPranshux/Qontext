@@ -5,6 +5,7 @@ import protectedRoutes from './protected.routes.js';
 import documentsRoutes from './documents.routes.js';
 import queryRoutes from './query.routes.js';
 import chatRoutes from './chat.routes.js';
+import conversationsRoutes from './conversations.routes.js';
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use('/protected', protectedRoutes);
 router.use('/documents', documentsRoutes);
 router.use('/query', queryRoutes);
 router.use('/chat', chatRoutes);
+router.use('/conversations', conversationsRoutes);
 
 export default router;

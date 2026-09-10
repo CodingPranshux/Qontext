@@ -19,8 +19,9 @@ import {
   CircleCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useChat } from '../context/ChatContext.jsx';
 import { askQuestion } from '../lib/chatStream.js';
-import { listDocuments } from '../lib/api.js';
+import { listDocuments, appendTurn } from '../lib/api.js';
 
 const CITATION_PATTERN = /\[chunk_id:\s*([^\]]+)\]/g;
 
@@ -286,7 +287,7 @@ function Turn({ turn, userEmail, onCiteClick }) {
 function ChatPage() {
   const { token, user } = useAuth();
   const location = useLocation();
-  const [messages, setMessages] = useState([]);
+  const { messages, setMessages, clearConversation } = useChat();
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedSource, setSelectedSource] = useState(null);
@@ -294,7 +295,7 @@ function ChatPage() {
   const bottomRef = useRef(null);
 
   useEffect(() => {
-    if (location.state?.resetAt) setMessages([]);
+    if (location.state?.resetAt) clearConversation();
   }, [location.state?.resetAt]);
 
   useEffect(() => {
@@ -322,6 +323,11 @@ function ChatPage() {
     setMessages((prev) => prev.map((t) => (t.id === id ? updater(t) : t)));
   }
 
+  /** Best-effort save of one finished turn — a failure here shouldn't affect the already-rendered answer. */
+  function persistTurn(turn) {
+    appendTurn({ token, turn }).catch(() => {});
+  }
+
   async function submitQuestion(question) {
     if (!question || loading) return;
 
@@ -335,19 +341,18 @@ function ChatPage() {
     const id = `${Date.now()}-${Math.random()}`;
     const askedAt = new Date();
     const startedAt = performance.now();
+
+    // Mirrors what's pushed into `messages` below, so the finished turn can
+    // be persisted from these local values instead of racing React's async
+    // state updates to read the just-settled turn back out.
+    const turnData = { question, askedAt, answer: '', sources: [], citedChunkIds: [], retrievalQuery: null, rewritten: false, latencyMs: null };
+
     setMessages((prev) => [
       ...prev,
       {
         id,
-        question,
-        askedAt,
-        answer: '',
-        sources: [],
-        citedChunkIds: [],
+        ...turnData,
         searched: false,
-        retrievalQuery: null,
-        rewritten: false,
-        latencyMs: null,
         status: 'streaming',
         error: null,
       },
@@ -360,15 +365,33 @@ function ChatPage() {
         token,
         query: question,
         history,
-        onRetrieval: ({ query: retrievalQuery, rewritten }) => updateTurn(id, (t) => ({ ...t, retrievalQuery, rewritten })),
-        onSources: (sources) =>
-          updateTurn(id, (t) => ({ ...t, sources, searched: true, latencyMs: Math.round(performance.now() - startedAt) })),
-        onToken: (chunk) => updateTurn(id, (t) => ({ ...t, answer: t.answer + chunk })),
-        onDone: (citedChunkIds) => updateTurn(id, (t) => ({ ...t, citedChunkIds, status: 'done' })),
-        onError: (message) => updateTurn(id, (t) => ({ ...t, status: 'error', error: message })),
+        onRetrieval: ({ query: retrievalQuery, rewritten }) => {
+          turnData.retrievalQuery = retrievalQuery;
+          turnData.rewritten = rewritten;
+          updateTurn(id, (t) => ({ ...t, retrievalQuery, rewritten }));
+        },
+        onSources: (sources) => {
+          turnData.sources = sources;
+          turnData.latencyMs = Math.round(performance.now() - startedAt);
+          updateTurn(id, (t) => ({ ...t, sources, searched: true, latencyMs: turnData.latencyMs }));
+        },
+        onToken: (chunk) => {
+          turnData.answer += chunk;
+          updateTurn(id, (t) => ({ ...t, answer: t.answer + chunk }));
+        },
+        onDone: (citedChunkIds) => {
+          turnData.citedChunkIds = citedChunkIds;
+          updateTurn(id, (t) => ({ ...t, citedChunkIds, status: 'done' }));
+          persistTurn({ ...turnData, status: 'done', error: null });
+        },
+        onError: (message) => {
+          updateTurn(id, (t) => ({ ...t, status: 'error', error: message }));
+          persistTurn({ ...turnData, status: 'error', error: message });
+        },
       });
     } catch (err) {
       updateTurn(id, (t) => ({ ...t, status: 'error', error: err.message }));
+      persistTurn({ ...turnData, status: 'error', error: err.message });
     } finally {
       setLoading(false);
     }

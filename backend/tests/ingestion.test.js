@@ -143,6 +143,70 @@ describe('GET /api/documents', () => {
   });
 });
 
+describe('DELETE /api/documents/:id', () => {
+  it('deletes the document, its chunks, and its vectors', async () => {
+    const { token, user } = await signupAndLogin();
+
+    const uploadRes = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', Buffer.from('The quick brown fox jumps over the lazy dog. '.repeat(60)), {
+        filename: 'notes.txt',
+        contentType: 'text/plain',
+      });
+    const { id, chunkCount } = uploadRes.body.document;
+    expect(chunkCount).toBeGreaterThan(0);
+
+    const deleteRes = await request(app).delete(`/api/documents/${id}`).set('Authorization', `Bearer ${token}`);
+    expect(deleteRes.status).toBe(204);
+
+    const listRes = await request(app).get('/api/documents').set('Authorization', `Bearer ${token}`);
+    expect(listRes.body.documents).toHaveLength(0);
+
+    const chunks = await Chunk.find({ tenantId: user.tenantId });
+    expect(chunks).toHaveLength(0);
+
+    const vectors = await vectorStore.findByTenant(user.tenantId);
+    expect(vectors).toHaveLength(0);
+  });
+
+  it('returns 404 for a document that does not exist', async () => {
+    const { token } = await signupAndLogin();
+    const res = await request(app)
+      .delete('/api/documents/000000000000000000000000')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 for a malformed id instead of a 500', async () => {
+    const { token } = await signupAndLogin();
+    const res = await request(app).delete('/api/documents/not-a-valid-id').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  it("never deletes another tenant's document", async () => {
+    const tenantA = await signupAndLogin();
+    const tenantB = await signupAndLogin();
+
+    const uploadRes = await request(app)
+      .post('/api/documents/upload')
+      .set('Authorization', `Bearer ${tenantA.token}`)
+      .attach('file', Buffer.from('Tenant A only.'), { filename: 'a-only.txt', contentType: 'text/plain' });
+    const { id } = uploadRes.body.document;
+
+    const deleteRes = await request(app).delete(`/api/documents/${id}`).set('Authorization', `Bearer ${tenantB.token}`);
+    expect(deleteRes.status).toBe(404);
+
+    const listRes = await request(app).get('/api/documents').set('Authorization', `Bearer ${tenantA.token}`);
+    expect(listRes.body.documents).toHaveLength(1);
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const res = await request(app).delete('/api/documents/000000000000000000000000');
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('tenant isolation at the storage layer (before retrieval exists)', () => {
   it('a direct MongoDB and vector-store query filtered by another tenant_id returns nothing', async () => {
     const tenantA = await signupAndLogin();

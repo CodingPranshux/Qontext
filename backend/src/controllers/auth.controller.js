@@ -35,3 +35,21 @@ export async function postLogin(req, res, next) {
     next(err);
   }
 }
+
+export async function postGoogleLogin(req, res, next) {
+  try {
+    const { idToken } = req.body;
+    if (!idToken) {
+      return res.status(400).json({ error: { message: 'idToken is required' } });
+    }
+
+    const { token, user } = await authService.loginWithGoogle({ idToken });
+
+    res.status(200).json({
+      token,
+      user: { id: user._id, email: user.email, tenantId: user.tenantId },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
